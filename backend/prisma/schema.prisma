@@ -1,0 +1,197 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Role {
+  roleId      Int      @id @default(autoincrement()) @map("role_id")
+  roleName    String   @unique @map("role_name") @db.VarChar(50)
+  description String?  @map("description") @db.VarChar(255)
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  userId               Int               @id @default(autoincrement()) @map("user_id")
+  username             String            @unique @map("username") @db.VarChar(50)
+  passwordHash         String            @map("password_hash") @db.VarChar(255)
+  realName             String            @map("real_name") @db.VarChar(100)
+  roleId               Int               @map("role_id")
+  isActive             Boolean           @default(true) @map("is_active")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  role                 Role              @relation(fields: [roleId], references: [roleId], onDelete: Restrict)
+  salesOrdersCreated   SalesOrder[]      @relation("SalesOrderCreator")
+  salesOrdersApproved  SalesOrder[]      @relation("SalesOrderApprover")
+  salesReturnsCreated  SalesReturn[]     @relation("SalesReturnCreator")
+  salesReturnsApproved SalesReturn[]     @relation("SalesReturnApprover")
+  creditMemosCreated   CreditMemo[]
+  financialLedgersCreated FinancialLedger[]
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+model Member {
+  memberId     String       @id @map("member_id") @db.VarChar(50)
+  email        String       @unique @map("email") @db.VarChar(100)
+  phone        String       @unique @map("phone") @db.VarChar(20)
+  passwordHash String       @map("password_hash") @db.VarChar(255)
+  realName     String       @map("real_name") @db.VarChar(100)
+  tier         String       @default("BRONZE") @map("tier") @db.VarChar(20)
+  totalSpent   Decimal      @default(0.00) @map("total_spent") @db.Decimal(12, 2)
+  isActive     Boolean      @default(true) @map("is_active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  salesOrders  SalesOrder[]
+  creditMemos  CreditMemo[]
+
+  @@map("members")
+}
+
+model Product {
+  productId     String              @id @map("product_id") @db.VarChar(50)
+  barcode       String              @unique @map("barcode") @db.VarChar(50)
+  productName   String              @map("product_name") @db.VarChar(255)
+  spec          String?             @map("spec") @db.VarChar(255)
+  unit          String              @default("pcs") @map("unit") @db.VarChar(20)
+  costPrice     Decimal             @map("cost_price") @db.Decimal(12, 2)
+  retailPrice   Decimal             @map("retail_price") @db.Decimal(12, 2)
+  stockQuantity Decimal             @default(0.00) @map("stock_quantity") @db.Decimal(12, 2)
+  safetyStock   Decimal             @default(10.00) @map("safety_stock") @db.Decimal(12, 2)
+  createdAt     DateTime            @default(now()) @map("created_at")
+  salesOrderDetails SalesOrderDetail[]
+  salesReturnDetails SalesReturnDetail[]
+  damagedInventories DamagedInventory[]
+
+  @@map("products")
+}
+
+model SalesOrder {
+  orderId           String             @id @map("order_id") @db.VarChar(50)
+  orderDate         DateTime           @map("order_date") @db.Date
+  memberId          String             @map("member_id") @db.VarChar(50)
+  totalAmount       Decimal            @default(0.00) @map("total_amount") @db.Decimal(12, 2)
+  status            String             @default("DRAFT") @map("status") @db.VarChar(20)
+  createdBy         Int                @map("created_by")
+  approvedBy        Int?               @map("approved_by")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at")
+  member            Member             @relation(fields: [memberId], references: [memberId], onDelete: Restrict)
+  creator           User               @relation("SalesOrderCreator", fields: [createdBy], references: [userId], onDelete: Restrict)
+  approver          User?              @relation("SalesOrderApprover", fields: [approvedBy], references: [userId], onDelete: Restrict)
+  salesOrderDetails SalesOrderDetail[]
+  salesReturns      SalesReturn[]
+
+  @@map("sales_orders")
+}
+
+model SalesOrderDetail {
+  detailId   Int        @id @default(autoincrement()) @map("detail_id")
+  orderId    String     @map("order_id") @db.VarChar(50)
+  productId  String     @map("product_id") @db.VarChar(50)
+  quantity   Decimal    @map("quantity") @db.Decimal(12, 2)
+  unitPrice  Decimal    @map("unit_price") @db.Decimal(12, 2)
+  subtotal   Decimal    @map("subtotal") @db.Decimal(12, 2)
+  salesOrder SalesOrder @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [productId], onDelete: Restrict)
+
+  @@unique([orderId, productId], map: "idx_sod_order_prod")
+  @@map("sales_order_details")
+}
+
+model SalesReturn {
+  returnId           String              @id @map("return_id") @db.VarChar(50)
+  returnDate         DateTime            @map("return_date") @db.Date
+  originalOrderId    String              @map("original_order_id") @db.VarChar(50)
+  refundTotal        Decimal             @default(0.00) @map("refund_total") @db.Decimal(12, 2)
+  status             String              @default("DRAFT") @map("status") @db.VarChar(20)
+  createdBy          Int                 @map("created_by")
+  approvedBy         Int?                @map("approved_by")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  originalOrder      SalesOrder          @relation(fields: [originalOrderId], references: [orderId], onDelete: Restrict)
+  creator            User                @relation("SalesReturnCreator", fields: [createdBy], references: [userId], onDelete: Restrict)
+  approver           User?               @relation("SalesReturnApprover", fields: [approvedBy], references: [userId], onDelete: Restrict)
+  salesReturnDetails SalesReturnDetail[]
+  damagedInventories DamagedInventory[]
+  creditMemo         CreditMemo?
+
+  @@map("sales_returns")
+}
+
+model SalesReturnDetail {
+  returnDetailId Int         @id @default(autoincrement()) @map("return_detail_id")
+  returnId       String      @map("return_id") @db.VarChar(50)
+  productId      String      @map("product_id") @db.VarChar(50)
+  quantity       Decimal     @map("quantity") @db.Decimal(12, 2)
+  unitPrice      Decimal     @map("unit_price") @db.Decimal(12, 2)
+  subtotal       Decimal     @map("subtotal") @db.Decimal(12, 2)
+  isRestocked    Boolean     @default(true) @map("is_restocked")
+  salesReturn    SalesReturn @relation(fields: [returnId], references: [returnId], onDelete: Cascade)
+  product        Product     @relation(fields: [productId], references: [productId], onDelete: Restrict)
+
+  @@unique([returnId, productId], map: "idx_srd_return_prod")
+  @@map("sales_return_details")
+}
+
+model DamagedInventory {
+  scrapId     Int         @id @default(autoincrement()) @map("scrap_id")
+  returnId    String      @map("return_id") @db.VarChar(50)
+  productId   String      @map("product_id") @db.VarChar(50)
+  quantity    Decimal     @map("quantity") @db.Decimal(12, 2)
+  scrapReason String?     @default("損壞報廢") @map("scrap_reason") @db.VarChar(255)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  salesReturn SalesReturn @relation(fields: [returnId], references: [returnId], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [productId], onDelete: Restrict)
+
+  @@map("damaged_inventories")
+}
+
+model AuditLog {
+  logId         Int      @id @default(autoincrement()) @map("log_id")
+  userId        Int      @map("user_id")
+  action        String   @map("action") @db.VarChar(50)
+  targetTable   String   @map("target_table") @db.VarChar(100)
+  targetKey     String   @map("target_key") @db.VarChar(100)
+  payloadBefore Json?    @map("payload_before")
+  payloadAfter  Json?    @map("payload_after")
+  ipAddress     String?  @map("ip_address") @db.VarChar(45)
+  createdAt     DateTime @default(now()) @map("created_at")
+  user          User     @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@map("audit_logs")
+}
+
+model CreditMemo {
+  memoId      String      @id @map("memo_id") @db.VarChar(50)
+  returnId    String      @unique @map("return_id") @db.VarChar(50)
+  memberId    String      @map("member_id") @db.VarChar(50)
+  memoAmount  Decimal     @map("memo_amount") @db.Decimal(12, 2)
+  status      String      @default("UNAPPLIED") @map("status") @db.VarChar(20)
+  createdBy   Int         @map("created_by")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  salesReturn SalesReturn @relation(fields: [returnId], references: [returnId], onDelete: Restrict)
+  member      Member      @relation(fields: [memberId], references: [memberId], onDelete: Restrict)
+  creator     User        @relation(fields: [createdBy], references: [userId], onDelete: Restrict)
+
+  @@map("credit_memos")
+}
+
+model FinancialLedger {
+  entryId       Int      @id @default(autoincrement()) @map("entry_id")
+  entryDate     DateTime @map("entry_date") @db.Date
+  referenceType String   @map("reference_type") @db.VarChar(50)
+  referenceId   String   @map("reference_id") @db.VarChar(50)
+  accountCode   String   @map("account_code") @db.VarChar(50)
+  debit         Decimal  @default(0.00) @map("debit") @db.Decimal(12, 2)
+  credit        Decimal  @default(0.00) @map("credit") @db.Decimal(12, 2)
+  description   String?  @map("description") @db.VarChar(255)
+  createdBy     Int      @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  creator       User     @relation(fields: [createdBy], references: [userId], onDelete: Restrict)
+
+  @@map("financial_ledgers")
+}
